@@ -17,3 +17,6 @@ pretty_assertions = "0.6.1"
 tempfile = "3.1.0"
 anyhow = "1.0.32"
 cbindgen = "0.14.3"
+
+[workspace]
+members = ["cargo-libloading-bindgen"]

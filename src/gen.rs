@@ -1,14 +1,15 @@
 use crate::bindings::{Bindings, ExternFunction};
-use proc_macro2::Span;
+use proc_macro2::{Span, TokenStream};
+use quote::ToTokens;
 use syn::{
     token::{Brace, Paren},
-    Abi, AngleBracketedGenericArguments, BareFnArg, Block, Expr, ExprCall,
-    ExprField, ExprLit, ExprMethodCall, ExprParen, ExprPath, ExprStruct,
-    ExprTry, ExprUnary, Field, FieldValue, Fields, FieldsNamed, FnArg,
-    ForeignItemFn, GenericArgument, GenericParam, Generics, Ident,
-    ImplItemMethod, Item, ItemImpl, ItemStruct, Lit, LitByteStr, Local, Member,
-    Pat, PatIdent, PatType, Path, PathArguments, PathSegment, PredicateType,
-    Receiver, ReturnType, Signature, Stmt, Token, TraitBound,
+    Abi, AngleBracketedGenericArguments, AttrStyle, Attribute, BareFnArg,
+    Block, Expr, ExprCall, ExprField, ExprLit, ExprMethodCall, ExprParen,
+    ExprPath, ExprStruct, ExprTry, ExprUnary, Field, FieldValue, Fields,
+    FieldsNamed, FnArg, ForeignItemFn, GenericArgument, GenericParam, Generics,
+    Ident, ImplItemMethod, Item, ItemImpl, ItemStruct, Lit, LitByteStr, LitStr,
+    Local, Member, Pat, PatIdent, PatType, Path, PathArguments, PathSegment,
+    PredicateType, Receiver, ReturnType, Signature, Stmt, Token, TraitBound,
     TraitBoundModifier, Type, TypeBareFn, TypeParam, TypeParamBound, TypePath,
     UnOp, VisPublic, Visibility, WhereClause, WherePredicate,
 };
@@ -23,8 +24,6 @@ fn bindings_vtable(bindings: &Bindings) -> ItemStruct {
     let mut fields: Vec<Field> = Vec::new();
 
     fields.push(Field {
-        attrs: Vec::new(),
-        colon_token: Some(<Token!(:)>::default()),
         ident: Some(Ident::new("_library", Span::call_site())),
         ty: Type::Path(TypePath {
             path: Path {
@@ -34,33 +33,41 @@ fn bindings_vtable(bindings: &Bindings) -> ItemStruct {
             qself: None,
         }),
         vis: Visibility::Inherited,
+        attrs: vec![Attribute {
+            path: short_path("doc"),
+            tokens: library_safety_docs(),
+            style: AttrStyle::Outer,
+            pound_token: Default::default(),
+            bracket_token: Default::default(),
+        }],
+        colon_token: Some(<Token!(:)>::default()),
     });
 
     for func in &bindings.functions {
         let sig = function_signature(func);
 
         fields.push(Field {
-            attrs: Vec::new(),
             colon_token: Some(<Token!(:)>::default()),
             ident: Some(func.item.sig.ident.clone()),
             ty: Type::BareFn(sig),
             vis: Visibility::Inherited,
+            attrs: Vec::new(),
         });
     }
 
     ItemStruct {
+        ident: Ident::new("Bindings", Span::call_site()),
         fields: Fields::Named(FieldsNamed {
             brace_token: Brace::default(),
             named: fields.into_iter().collect(),
         }),
-        attrs: Vec::new(),
         generics: Generics::default(),
-        ident: Ident::new("Bindings", Span::call_site()),
         vis: Visibility::Public(VisPublic {
             pub_token: <Token![pub]>::default(),
         }),
         semi_token: None,
         struct_token: <Token![struct]>::default(),
+        attrs: Vec::new(),
     }
 }
 
@@ -321,6 +328,16 @@ fn load_from_path(bindings: &Bindings) -> ImplItemMethod {
         sig,
         block,
     }
+}
+
+fn library_safety_docs() -> TokenStream {
+    let mut tokens = TokenStream::new();
+    <Token![=]>::default().to_tokens(&mut tokens);
+
+    let msg = "Safety: We need to keep the library handle around because our vtable's pointers point into it.";
+    LitStr::new(msg, Span::call_site()).to_tokens(&mut tokens);
+
+    tokens
 }
 
 fn generic_type<A>(name: &str, args: A) -> Path
