@@ -25,8 +25,8 @@ where
         .to_string();
     let mut file: File = syn::parse_str(&raw_bindings)?;
 
-    let bindings = crate::bindings::extract_raw_bindings(&mut file);
-    gen::append_new_bindings(&mut file.items, bindings, strategy);
+    let bindings = crate::bindings::extract_raw_bindings(&mut file, strategy);
+    gen::append_new_bindings(&mut file.items, bindings);
 
     Ok(file)
 }

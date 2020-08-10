@@ -50,19 +50,37 @@ fn compile_and_test(
     test_dir: &Path,
     output_dir: &Path,
 ) -> Result<(), Error> {
-    let library_code = test_dir.join("lib.rs");
+    let library_code = test_dir.join("native.rs");
     let native_dir = output_dir.join("native");
-    let _native_library =
+    let native_library =
         compile_native_library(name, &native_dir, &library_code)
             .context("Compiling the native library failed")?;
 
     let test_code = test_dir.join("test.rs");
-    let _test_file_manifest = generate_test_binary(
+    let test_file_manifest = generate_test_binary(
         name,
         output_dir.join(name),
         &native_dir,
         &test_code,
     )?;
+
+    let output = Command::new("cargo")
+        .arg("run")
+        .arg("--manifest-path")
+        .arg(test_file_manifest)
+        .arg("--")
+        .arg(&native_library)
+        .stdin(Stdio::null())
+        .stderr(Stdio::inherit())
+        .stdout(Stdio::inherit())
+        .output()
+        .context("Unable to execute `cargo run`")?;
+    if !output.status.success() {
+        anyhow::bail!(
+            "Command failed with exit code: {:?}",
+            output.status.code(),
+        );
+    }
 
     Ok(())
 }

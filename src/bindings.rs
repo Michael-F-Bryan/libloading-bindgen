@@ -1,12 +1,16 @@
+use crate::BindingStrategy;
 use syn::{
     visit_mut::{self, VisitMut},
     File, ForeignItem, ForeignItemFn, ForeignItemStatic, Item, ItemForeignMod,
     LitStr,
 };
 
-pub(crate) fn extract_raw_bindings(file: &mut File) -> Bindings {
+pub(crate) fn extract_raw_bindings<S>(file: &mut File, strategy: &S) -> Bindings
+where
+    S: BindingStrategy,
+{
     // extract the items we care about
-    let mut generator = Generator::default();
+    let mut generator = Generator::with_strategy(strategy);
 
     generator.visit_file_mut(file);
 
@@ -29,14 +33,26 @@ pub(crate) struct ExternFunction {
     pub(crate) item: ForeignItemFn,
 }
 
-#[derive(Debug, Default)]
-struct Generator {
+#[derive(Debug)]
+struct Generator<'a, S> {
     functions: Vec<ExternFunction>,
     statics: Vec<ForeignItemStatic>,
     current_abi: Option<LitStr>,
+    strategy: &'a S,
 }
 
-impl VisitMut for Generator {
+impl<'a, S: BindingStrategy> Generator<'a, S> {
+    fn with_strategy(strategy: &'a S) -> Self {
+        Generator {
+            strategy,
+            functions: Vec::new(),
+            statics: Vec::new(),
+            current_abi: None,
+        }
+    }
+}
+
+impl<'a, S: BindingStrategy> VisitMut for Generator<'a, S> {
     fn visit_file_mut(&mut self, file: &mut File) {
         visit_mut::visit_file_mut(self, file);
 
@@ -63,10 +79,14 @@ impl VisitMut for Generator {
 
         for it in items.into_iter() {
             match it {
-                ForeignItem::Fn(item) => self.functions.push(ExternFunction {
-                    abi: current_abi.clone(),
-                    item,
-                }),
+                ForeignItem::Fn(item) => {
+                    if self.strategy.should_include(&item) {
+                        self.functions.push(ExternFunction {
+                            abi: current_abi.clone(),
+                            item,
+                        });
+                    }
+                },
                 ForeignItem::Static(s) => self.statics.push(s),
                 mut other => {
                     self.visit_foreign_item_mut(&mut other);
@@ -84,6 +104,12 @@ mod tests {
     use super::*;
     use syn::Item;
 
+    struct Always;
+
+    impl BindingStrategy for Always {
+        fn should_include(&self, _item: &ForeignItemFn) -> bool { true }
+    }
+
     #[test]
     fn extract_bindings_from_rust_code() {
         let src = r#"
@@ -100,7 +126,7 @@ mod tests {
         "#;
         let mut file: File = syn::parse_str(src).unwrap();
 
-        let bindings = extract_raw_bindings(&mut file);
+        let bindings = extract_raw_bindings(&mut file, &Always);
 
         assert_eq!(file.attrs, file.attrs);
         // the `extern "C"` block should have been removed
