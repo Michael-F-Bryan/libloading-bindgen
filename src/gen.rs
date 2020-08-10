@@ -3,11 +3,12 @@ use proc_macro2::Span;
 use syn::{
     token::{Brace, Paren},
     Abi, AngleBracketedGenericArguments, BareFnArg, Block, Expr, ExprCall,
-    ExprLit, ExprMethodCall, ExprPath, ExprStruct, ExprTry, ExprUnary, Field,
-    FieldValue, Fields, FieldsNamed, FnArg, GenericArgument, GenericParam,
-    Generics, Ident, ImplItemMethod, Item, ItemImpl, ItemStruct, Lit,
-    LitByteStr, Local, Pat, PatIdent, PatType, Path, PathArguments,
-    PathSegment, PredicateType, ReturnType, Signature, Stmt, Token, TraitBound,
+    ExprField, ExprLit, ExprMethodCall, ExprParen, ExprPath, ExprStruct,
+    ExprTry, ExprUnary, Field, FieldValue, Fields, FieldsNamed, FnArg,
+    ForeignItemFn, GenericArgument, GenericParam, Generics, Ident,
+    ImplItemMethod, Item, ItemImpl, ItemStruct, Lit, LitByteStr, Local, Member,
+    Pat, PatIdent, PatType, Path, PathArguments, PathSegment, PredicateType,
+    Receiver, ReturnType, Signature, Stmt, Token, TraitBound,
     TraitBoundModifier, Type, TypeBareFn, TypeParam, TypeParamBound, TypePath,
     UnOp, VisPublic, Visibility, WhereClause, WherePredicate,
 };
@@ -15,6 +16,7 @@ use syn::{
 pub(crate) fn append_new_bindings(items: &mut Vec<Item>, bindings: Bindings) {
     items.push(bindings_vtable(&bindings).into());
     items.push(bindings_constructor(&bindings).into());
+    items.push(bindings_methods(&bindings).into());
 }
 
 fn bindings_vtable(bindings: &Bindings) -> ItemStruct {
@@ -23,7 +25,7 @@ fn bindings_vtable(bindings: &Bindings) -> ItemStruct {
     fields.push(Field {
         attrs: Vec::new(),
         colon_token: Some(<Token!(:)>::default()),
-        ident: Some(Ident::new("library", Span::call_site())),
+        ident: Some(Ident::new("_library", Span::call_site())),
         ty: Type::Path(TypePath {
             path: Path {
                 leading_colon: Some(<Token![::]>::default()),
@@ -211,8 +213,8 @@ fn load_from_path(bindings: &Bindings) -> ImplItemMethod {
     };
 
     let mut binding_struct_fields = vec![FieldValue {
-        colon_token: None,
-        member: syn::Member::Named(Ident::new("library", Span::call_site())),
+        colon_token: Some(Default::default()),
+        member: syn::Member::Named(Ident::new("_library", Span::call_site())),
         expr: Expr::Path(ExprPath {
             path: short_path("library"),
             attrs: Vec::new(),
@@ -434,7 +436,7 @@ fn load_from_path_signature() -> Signature {
     Signature {
         constness: None,
         asyncness: None,
-        unsafety: None,
+        unsafety: Some(<Token![unsafe]>::default()),
         abi: None,
         fn_token: <Token![fn]>::default(),
         ident: Ident::new("load_from_path", Span::call_site()),
@@ -443,5 +445,98 @@ fn load_from_path_signature() -> Signature {
         inputs,
         variadic: None,
         output,
+    }
+}
+
+fn defer_to_function(func: &ForeignItemFn) -> ImplItemMethod {
+    let mut inputs = func.sig.inputs.clone();
+    inputs.insert(
+        0,
+        FnArg::Receiver(Receiver {
+            attrs: Vec::new(),
+            reference: Some((<Token![&]>::default(), None)),
+            mutability: None,
+            self_token: <Token![self]>::default(),
+        }),
+    );
+
+    let sig = Signature {
+        inputs,
+        unsafety: Some(<Token![unsafe]>::default()),
+        ..func.sig.clone()
+    };
+
+    let mut call_args = Vec::new();
+    for input in &func.sig.inputs {
+        if let FnArg::Typed(PatType { ref pat, .. }) = input {
+            if let Pat::Ident(PatIdent { ref ident, .. }) = **pat {
+                call_args.push(Expr::Path(ExprPath {
+                    path: Path::from(PathSegment {
+                        ident: ident.clone(),
+                        arguments: PathArguments::None,
+                    }),
+                    qself: None,
+                    attrs: Vec::new(),
+                }));
+            }
+        }
+    }
+
+    let field = Expr::Paren(ExprParen {
+        expr: Box::new(Expr::Field(ExprField {
+            base: Box::new(Expr::Path(ExprPath {
+                path: short_path("self"),
+                qself: None,
+                attrs: Vec::new(),
+            })),
+            attrs: Vec::new(),
+            dot_token: Default::default(),
+            member: Member::Named(func.sig.ident.clone()),
+        })),
+        attrs: Vec::new(),
+        paren_token: Default::default(),
+    });
+
+    let block = Block {
+        brace_token: Default::default(),
+        stmts: vec![Stmt::Expr(Expr::Call(ExprCall {
+            func: Box::new(field),
+            args: call_args.into_iter().collect(),
+            attrs: Vec::new(),
+            paren_token: Default::default(),
+        }))],
+    };
+
+    ImplItemMethod {
+        attrs: Vec::new(),
+        vis: Visibility::Public(VisPublic {
+            pub_token: <Token![pub]>::default(),
+        }),
+        defaultness: None,
+        sig,
+        block,
+    }
+}
+
+fn bindings_methods(bindings: &Bindings) -> ItemImpl {
+    let mut methods = Vec::new();
+
+    for func in &bindings.functions {
+        methods.push(defer_to_function(&func.item).into());
+    }
+
+    ItemImpl {
+        attrs: Vec::new(),
+        brace_token: Default::default(),
+        defaultness: None,
+        generics: Generics::default(),
+        self_ty: Box::new(Type::Path(TypePath {
+            path: short_path("Bindings"),
+            qself: None,
+        })),
+        trait_: None,
+        unsafety: None,
+        impl_token: Default::default(),
+        items: methods,
     }
 }

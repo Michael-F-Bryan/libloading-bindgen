@@ -66,6 +66,7 @@ fn compile_and_test(
 
     let output = Command::new("cargo")
         .arg("run")
+        .arg("--quiet")
         .arg("--manifest-path")
         .arg(test_file_manifest)
         .arg("--")
@@ -213,6 +214,7 @@ where
 
     let output = Command::new("cargo")
         .arg("build")
+        .arg("--quiet")
         .arg("--manifest-path")
         .arg(&cargo_toml)
         .stdin(Stdio::null())
