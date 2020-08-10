@@ -1,15 +1,15 @@
 use crate::bindings::{Bindings, ExternFunction};
-use proc_macro2::{Span, TokenStream};
+use proc_macro2::Span;
 use syn::{
     token::{Brace, Paren},
     Abi, AngleBracketedGenericArguments, BareFnArg, Block, Expr, ExprCall,
-    ExprMacro, ExprPath, ExprTry, Field, Fields, FieldsNamed, FnArg,
-    GenericArgument, GenericParam, Generics, Ident, ImplItemMethod, Item,
-    ItemImpl, ItemStruct, Local, Macro, MacroDelimiter, Pat, PatIdent, PatType,
-    Path, PathArguments, PathSegment, PredicateType, ReturnType, Signature,
-    Stmt, Token, TraitBound, TraitBoundModifier, Type, TypeBareFn, TypeParam,
-    TypeParamBound, TypePath, VisPublic, Visibility, WhereClause,
-    WherePredicate,
+    ExprLit, ExprMethodCall, ExprPath, ExprStruct, ExprTry, ExprUnary, Field,
+    FieldValue, Fields, FieldsNamed, FnArg, GenericArgument, GenericParam,
+    Generics, Ident, ImplItemMethod, Item, ItemImpl, ItemStruct, Lit,
+    LitByteStr, Local, Pat, PatIdent, PatType, Path, PathArguments,
+    PathSegment, PredicateType, ReturnType, Signature, Stmt, Token, TraitBound,
+    TraitBoundModifier, Type, TypeBareFn, TypeParam, TypeParamBound, TypePath,
+    UnOp, VisPublic, Visibility, WhereClause, WherePredicate,
 };
 
 pub(crate) fn append_new_bindings(items: &mut Vec<Item>, bindings: Bindings) {
@@ -19,6 +19,31 @@ pub(crate) fn append_new_bindings(items: &mut Vec<Item>, bindings: Bindings) {
 
 fn bindings_vtable(bindings: &Bindings) -> ItemStruct {
     let mut fields: Vec<Field> = Vec::new();
+
+    fields.push(Field {
+        attrs: Vec::new(),
+        colon_token: Some(<Token!(:)>::default()),
+        ident: Some(Ident::new("library", Span::call_site())),
+        ty: Type::Path(TypePath {
+            path: Path {
+                leading_colon: Some(<Token![::]>::default()),
+                segments: vec![
+                    PathSegment {
+                        ident: Ident::new("libloading", Span::call_site()),
+                        arguments: PathArguments::None,
+                    },
+                    PathSegment {
+                        ident: Ident::new("Library", Span::call_site()),
+                        arguments: PathArguments::None,
+                    },
+                ]
+                .into_iter()
+                .collect(),
+            },
+            qself: None,
+        }),
+        vis: Visibility::Inherited,
+    });
 
     for func in &bindings.functions {
         let sig = function_signature(func);
@@ -181,23 +206,123 @@ fn load_from_path(bindings: &Bindings) -> ImplItemMethod {
         semi_token: <Token![;]>::default(),
     });
 
+    let mut stmts = vec![opening_the_library];
+    let library_variable = ExprPath {
+        path: Path::from(PathSegment {
+            ident: Ident::new("library", Span::call_site()),
+            arguments: PathArguments::None,
+        }),
+        attrs: Vec::new(),
+        qself: None,
+    };
+
+    let mut binding_struct_fields = vec![FieldValue {
+        colon_token: None,
+        member: syn::Member::Named(Ident::new("library", Span::call_site())),
+        expr: Expr::Path(ExprPath {
+            path: Path::from(PathSegment {
+                ident: Ident::new("library", Span::call_site()),
+                arguments: PathArguments::None,
+            }),
+            attrs: Vec::new(),
+            qself: None,
+        }),
+        attrs: Vec::new(),
+    }];
+
+    for func in &bindings.functions {
+        let argument = func.item.sig.ident.to_string();
+
+        let library_get = Expr::MethodCall(ExprMethodCall {
+            attrs: Vec::new(),
+            receiver: Box::new(Expr::Path(library_variable.clone())),
+            dot_token: Default::default(),
+            method: Ident::new("get", Span::call_site()),
+            turbofish: None,
+            paren_token: Default::default(),
+            args: vec![Expr::Lit(ExprLit {
+                lit: Lit::ByteStr(LitByteStr::new(
+                    argument.as_bytes(),
+                    Span::call_site(),
+                )),
+                attrs: Vec::new(),
+            })]
+            .into_iter()
+            .collect(),
+        });
+
+        let assignment = Stmt::Local(Local {
+            pat: Pat::Ident(PatIdent {
+                ident: Ident::new(&argument, Span::call_site()),
+                attrs: Vec::new(),
+                by_ref: None,
+                mutability: None,
+                subpat: None,
+            }),
+            init: Some((
+                <Token![=]>::default(),
+                Box::new(Expr::Unary(ExprUnary {
+                    attrs: Vec::new(),
+                    op: UnOp::Deref(Default::default()),
+                    expr: Box::new(Expr::Try(ExprTry {
+                        expr: Box::new(library_get),
+                        attrs: Vec::new(),
+                        question_token: <Token![?]>::default(),
+                    })),
+                })),
+            )),
+            attrs: Vec::new(),
+            let_token: <Token![let]>::default(),
+            semi_token: <Token![;]>::default(),
+        });
+
+        stmts.push(assignment);
+        binding_struct_fields.push(FieldValue {
+            colon_token: None,
+            member: syn::Member::Named(Ident::new(
+                &argument,
+                Span::call_site(),
+            )),
+            expr: Expr::Path(ExprPath {
+                path: Path::from(PathSegment {
+                    ident: Ident::new(&argument, Span::call_site()),
+                    arguments: PathArguments::None,
+                }),
+                attrs: Vec::new(),
+                qself: None,
+            }),
+            attrs: Vec::new(),
+        });
+    }
+
+    let binding_struct_literal = Expr::Struct(ExprStruct {
+        path: Path::from(PathSegment {
+            ident: Ident::new("Bindings", Span::call_site()),
+            arguments: PathArguments::None,
+        }),
+        fields: binding_struct_fields.into_iter().collect(),
+        brace_token: Default::default(),
+        dot2_token: None,
+        rest: None,
+        attrs: Vec::new(),
+    });
+    stmts.push(Stmt::Expr(Expr::Call(ExprCall {
+        func: Box::new(Expr::Path(ExprPath {
+            path: Path::from(PathSegment {
+                ident: Ident::new("Ok", Span::call_site()),
+                arguments: PathArguments::None,
+            }),
+            attrs: Vec::new(),
+            qself: None,
+        })),
+        args: vec![binding_struct_literal].into_iter().collect(),
+        paren_token: Default::default(),
+        attrs: Vec::new(),
+    })));
+
     let block = Block {
         brace_token: Default::default(),
-        stmts: vec![
-            opening_the_library,
-            Stmt::Expr(Expr::Macro(ExprMacro {
-                attrs: Vec::new(),
-                mac: Macro {
-                    bang_token: Default::default(),
-                    path: Path::from(PathSegment {
-                        ident: Ident::new("todo", Span::call_site()),
-                        arguments: PathArguments::None,
-                    }),
-                    tokens: TokenStream::new(),
-                    delimiter: MacroDelimiter::Paren(Paren::default()),
-                },
-            })),
-        ],
+        stmts,
     };
 
     ImplItemMethod {
