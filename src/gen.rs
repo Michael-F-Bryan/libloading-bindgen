@@ -27,18 +27,7 @@ fn bindings_vtable(bindings: &Bindings) -> ItemStruct {
         ty: Type::Path(TypePath {
             path: Path {
                 leading_colon: Some(<Token![::]>::default()),
-                segments: vec![
-                    PathSegment {
-                        ident: Ident::new("libloading", Span::call_site()),
-                        arguments: PathArguments::None,
-                    },
-                    PathSegment {
-                        ident: Ident::new("Library", Span::call_site()),
-                        arguments: PathArguments::None,
-                    },
-                ]
-                .into_iter()
-                .collect(),
+                ..long_path(&["libloading", "Library"])
             },
             qself: None,
         }),
@@ -134,15 +123,41 @@ fn bindings_constructor(bindings: &Bindings) -> ItemImpl {
         generics: Generics::default(),
         trait_: None,
         self_ty: Box::new(Type::Path(TypePath {
-            path: Path::from(PathSegment {
-                ident: Ident::new("Bindings", Span::call_site()),
-                arguments: PathArguments::None,
-            }),
+            path: short_path("Bindings"),
             qself: None,
         })),
         brace_token: Default::default(),
         items: vec![load_from_path.into()],
     }
+}
+
+fn long_path<I, S>(segments: I) -> Path
+where
+    I: IntoIterator<Item = S>,
+    S: AsRef<str>,
+{
+    let segments = segments
+        .into_iter()
+        .map(|segment| PathSegment {
+            ident: Ident::new(segment.as_ref(), Span::call_site()),
+            arguments: PathArguments::None,
+        })
+        .collect();
+
+    Path {
+        leading_colon: None,
+        segments,
+    }
+}
+
+fn short_path<S>(name: S) -> Path
+where
+    S: AsRef<str>,
+{
+    Path::from(PathSegment {
+        ident: Ident::new(name.as_ref(), Span::call_site()),
+        arguments: PathArguments::None,
+    })
 }
 
 fn load_from_path(bindings: &Bindings) -> ImplItemMethod {
@@ -152,32 +167,14 @@ fn load_from_path(bindings: &Bindings) -> ImplItemMethod {
         func: Box::new(Expr::Path(ExprPath {
             path: Path {
                 leading_colon: Some(<Token![::]>::default()),
-                segments: vec![
-                    PathSegment {
-                        ident: Ident::new("libloading", Span::call_site()),
-                        arguments: PathArguments::None,
-                    },
-                    PathSegment {
-                        ident: Ident::new("Library", Span::call_site()),
-                        arguments: PathArguments::None,
-                    },
-                    PathSegment {
-                        ident: Ident::new("new", Span::call_site()),
-                        arguments: PathArguments::None,
-                    },
-                ]
-                .into_iter()
-                .collect(),
+                ..long_path(&["libloading", "Library", "new"])
             },
             attrs: Vec::new(),
             qself: None,
         })),
         attrs: Vec::new(),
         args: vec![Expr::Path(ExprPath {
-            path: Path::from(PathSegment {
-                ident: Ident::new("path", Span::call_site()),
-                arguments: PathArguments::None,
-            }),
+            path: short_path("path"),
             attrs: Vec::new(),
             qself: None,
         })]
@@ -208,10 +205,7 @@ fn load_from_path(bindings: &Bindings) -> ImplItemMethod {
 
     let mut stmts = vec![opening_the_library];
     let library_variable = ExprPath {
-        path: Path::from(PathSegment {
-            ident: Ident::new("library", Span::call_site()),
-            arguments: PathArguments::None,
-        }),
+        path: short_path("library"),
         attrs: Vec::new(),
         qself: None,
     };
@@ -220,10 +214,7 @@ fn load_from_path(bindings: &Bindings) -> ImplItemMethod {
         colon_token: None,
         member: syn::Member::Named(Ident::new("library", Span::call_site())),
         expr: Expr::Path(ExprPath {
-            path: Path::from(PathSegment {
-                ident: Ident::new("library", Span::call_site()),
-                arguments: PathArguments::None,
-            }),
+            path: short_path("library"),
             attrs: Vec::new(),
             qself: None,
         }),
@@ -296,10 +287,7 @@ fn load_from_path(bindings: &Bindings) -> ImplItemMethod {
     }
 
     let binding_struct_literal = Expr::Struct(ExprStruct {
-        path: Path::from(PathSegment {
-            ident: Ident::new("Bindings", Span::call_site()),
-            arguments: PathArguments::None,
-        }),
+        path: short_path("Bindings"),
         fields: binding_struct_fields.into_iter().collect(),
         brace_token: Default::default(),
         dot2_token: None,
@@ -308,10 +296,7 @@ fn load_from_path(bindings: &Bindings) -> ImplItemMethod {
     });
     stmts.push(Stmt::Expr(Expr::Call(ExprCall {
         func: Box::new(Expr::Path(ExprPath {
-            path: Path::from(PathSegment {
-                ident: Ident::new("Ok", Span::call_site()),
-                arguments: PathArguments::None,
-            }),
+            path: short_path("Ok"),
             attrs: Vec::new(),
             qself: None,
         })),
@@ -336,6 +321,31 @@ fn load_from_path(bindings: &Bindings) -> ImplItemMethod {
     }
 }
 
+fn generic_type<A>(name: &str, args: A) -> Path
+where
+    A: IntoIterator<Item = Path>,
+{
+    Path::from(PathSegment {
+        ident: Ident::new(name, Span::call_site()),
+        arguments: PathArguments::AngleBracketed(
+            AngleBracketedGenericArguments {
+                colon2_token: Default::default(),
+                lt_token: Default::default(),
+                gt_token: Default::default(),
+                args: args
+                    .into_iter()
+                    .map(|path| {
+                        GenericArgument::Type(Type::Path(TypePath {
+                            path,
+                            qself: None,
+                        }))
+                    })
+                    .collect(),
+            },
+        ),
+    })
+}
+
 /// This is a really complicated way to write the following:
 ///
 /// ```rust,ignore
@@ -344,49 +354,16 @@ fn load_from_path(bindings: &Bindings) -> ImplItemMethod {
 ///   P: AsRef<::std::path::Path>
 /// ```
 fn load_from_path_signature() -> Signature {
-    let libloading_error = TypePath {
-        path: Path {
-            leading_colon: Some(<Token![::]>::default()),
-            segments: vec![
-                PathSegment {
-                    ident: Ident::new("libloading", Span::call_site()),
-                    arguments: PathArguments::None,
-                },
-                PathSegment {
-                    ident: Ident::new("Error", Span::call_site()),
-                    arguments: PathArguments::None,
-                },
-            ]
-            .into_iter()
-            .collect(),
-        },
-        qself: None,
-    };
-    let capital_self = PathSegment {
-        ident: Ident::new("Self", Span::call_site()),
-        arguments: PathArguments::None,
+    let libloading_error = Path {
+        leading_colon: Some(<Token![::]>::default()),
+        ..long_path(&["libloading", "Error"])
     };
 
     let result_of_self_and_err = TypePath {
-        path: Path::from(PathSegment {
-            ident: Ident::new("Result", Span::call_site()),
-            arguments: PathArguments::AngleBracketed(
-                AngleBracketedGenericArguments {
-                    colon2_token: Default::default(),
-                    lt_token: Default::default(),
-                    gt_token: Default::default(),
-                    args: vec![
-                        GenericArgument::Type(Type::Path(TypePath {
-                            path: Path::from(capital_self),
-                            qself: None,
-                        })),
-                        GenericArgument::Type(Type::Path(libloading_error)),
-                    ]
-                    .into_iter()
-                    .collect(),
-                },
-            ),
-        }),
+        path: generic_type(
+            "Result",
+            vec![short_path("Self"), libloading_error],
+        ),
         qself: None,
     };
     let output = ReturnType::Type(
@@ -394,44 +371,17 @@ fn load_from_path_signature() -> Signature {
         Box::new(Type::Path(result_of_self_and_err)),
     );
 
-    let as_ref_path = TypeParamBound::Trait(TraitBound {
+    let as_ref_osstr = TypeParamBound::Trait(TraitBound {
         paren_token: None,
         modifier: TraitBoundModifier::None,
         lifetimes: None,
-        path: Path::from(PathSegment {
-            ident: Ident::new("AsRef", Span::call_site()),
-            arguments: PathArguments::AngleBracketed(
-                AngleBracketedGenericArguments {
-                    colon2_token: Default::default(),
-                    lt_token: Default::default(),
-                    gt_token: Default::default(),
-                    args: vec![GenericArgument::Type(Type::Path(TypePath {
-                        path: Path {
-                            segments: vec![
-                                PathSegment::from(Ident::new(
-                                    "std",
-                                    Span::call_site(),
-                                )),
-                                PathSegment::from(Ident::new(
-                                    "ffi",
-                                    Span::call_site(),
-                                )),
-                                PathSegment::from(Ident::new(
-                                    "OsStr",
-                                    Span::call_site(),
-                                )),
-                            ]
-                            .into_iter()
-                            .collect(),
-                            leading_colon: Some(<Token![::]>::default()),
-                        },
-                        qself: None,
-                    }))]
-                    .into_iter()
-                    .collect(),
-                },
-            ),
-        }),
+        path: generic_type(
+            "AsRef",
+            vec![Path {
+                leading_colon: Some(<Token![::]>::default()),
+                ..long_path(&["std", "ffi", "OsStr"])
+            }],
+        ),
     });
 
     let generics = Generics {
@@ -453,13 +403,10 @@ fn load_from_path_signature() -> Signature {
                 lifetimes: None,
                 colon_token: <Token![:]>::default(),
                 bounded_ty: Type::Path(TypePath {
-                    path: Path::from(PathSegment {
-                        ident: Ident::new("P", Span::call_site()),
-                        arguments: PathArguments::None,
-                    }),
+                    path: short_path("P"),
                     qself: None,
                 }),
-                bounds: vec![as_ref_path].into_iter().collect(),
+                bounds: vec![as_ref_osstr].into_iter().collect(),
             })]
             .into_iter()
             .collect(),
@@ -477,10 +424,7 @@ fn load_from_path_signature() -> Signature {
             subpat: None,
         })),
         ty: Box::new(Type::Path(TypePath {
-            path: Path::from(PathSegment {
-                ident: Ident::new("P", Span::call_site()),
-                arguments: PathArguments::None,
-            }),
+            path: short_path("P"),
             qself: None,
         })),
     })]
