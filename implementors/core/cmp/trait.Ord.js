@@ -1,0 +1,10 @@
+(function() {var implementors = {};
+implementors["bindgen"] = [{"text":"impl Ord for EnumVariantValue","synthetic":false,"types":[]},{"text":"impl Ord for IntKind","synthetic":false,"types":[]},{"text":"impl Ord for CodegenConfig","synthetic":false,"types":[]}];
+implementors["clang_sys"] = [{"text":"impl Ord for Version","synthetic":false,"types":[]}];
+implementors["glob"] = [{"text":"impl Ord for Pattern","synthetic":false,"types":[]},{"text":"impl Ord for MatchOptions","synthetic":false,"types":[]}];
+implementors["log"] = [{"text":"impl Ord for Level","synthetic":false,"types":[]},{"text":"impl Ord for LevelFilter","synthetic":false,"types":[]},{"text":"impl&lt;'a&gt; Ord for Metadata&lt;'a&gt;","synthetic":false,"types":[]},{"text":"impl&lt;'a&gt; Ord for MetadataBuilder&lt;'a&gt;","synthetic":false,"types":[]}];
+implementors["proc_macro2"] = [{"text":"impl Ord for Ident","synthetic":false,"types":[]}];
+implementors["regex_syntax"] = [{"text":"impl Ord for Span","synthetic":false,"types":[]},{"text":"impl Ord for Position","synthetic":false,"types":[]},{"text":"impl Ord for Literal","synthetic":false,"types":[]},{"text":"impl Ord for ClassUnicodeRange","synthetic":false,"types":[]},{"text":"impl Ord for ClassBytesRange","synthetic":false,"types":[]},{"text":"impl Ord for Utf8Sequence","synthetic":false,"types":[]},{"text":"impl Ord for Utf8Range","synthetic":false,"types":[]}];
+implementors["syn"] = [{"text":"impl Ord for Lifetime","synthetic":false,"types":[]}];
+implementors["vec_map"] = [{"text":"impl&lt;V:&nbsp;Ord&gt; Ord for VecMap&lt;V&gt;","synthetic":false,"types":[]}];
+if (window.register_implementors) {window.register_implementors(implementors);} else {window.pending_implementors = implementors;}})()

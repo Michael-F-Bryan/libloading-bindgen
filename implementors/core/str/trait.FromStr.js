@@ -1,0 +1,10 @@
+(function() {var implementors = {};
+implementors["bindgen"] = [{"text":"impl FromStr for EnumVariation","synthetic":false,"types":[]},{"text":"impl FromStr for AliasVariation","synthetic":false,"types":[]},{"text":"impl FromStr for RustTarget","synthetic":false,"types":[]}];
+implementors["clap"] = [{"text":"impl FromStr for AppSettings","synthetic":false,"types":[]},{"text":"impl FromStr for ArgSettings","synthetic":false,"types":[]},{"text":"impl FromStr for Shell","synthetic":false,"types":[]}];
+implementors["glob"] = [{"text":"impl FromStr for Pattern","synthetic":false,"types":[]}];
+implementors["humantime"] = [{"text":"impl FromStr for Duration","synthetic":false,"types":[]},{"text":"impl FromStr for Timestamp","synthetic":false,"types":[]}];
+implementors["log"] = [{"text":"impl FromStr for Level","synthetic":false,"types":[]},{"text":"impl FromStr for LevelFilter","synthetic":false,"types":[]}];
+implementors["proc_macro2"] = [{"text":"impl FromStr for TokenStream","synthetic":false,"types":[]}];
+implementors["regex"] = [{"text":"impl FromStr for Regex","synthetic":false,"types":[]},{"text":"impl FromStr for Regex","synthetic":false,"types":[]}];
+implementors["termcolor"] = [{"text":"impl FromStr for Color","synthetic":false,"types":[]}];
+if (window.register_implementors) {window.register_implementors(implementors);} else {window.pending_implementors = implementors;}})()
